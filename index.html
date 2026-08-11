@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Cartoon Studio</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #151515;
+  color: white;
+}
+
+header {
+  text-align: center;
+  padding: 20px;
+  background: #202020;
+}
+
+h1 {
+  margin: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 15px;
+  justify-content: center;
+  background: #252525;
+}
+
+button,
+input {
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+}
+
+button {
+  background: #444;
+  color: white;
+}
+
+canvas {
+  display: block;
+  width: 95%;
+  max-width: 700px;
+  height: auto;
+  margin: 20px auto;
+  background: white;
+  border-radius: 12px;
+  touch-action: none;
+}
+
+.frames {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 15px;
+}
+
+.frame {
+  width: 80px;
+  height: 60px;
+  object-fit: cover;
+  background: white;
+  border-radius: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>🎨 Cartoon Studio</h1>
+  <p>Draw • Create • Animate</p>
+</header>
+
+<div class="toolbar">
+
+  <button onclick="newFrame()">➕ New Frame</button>
+
+  <button onclick="clearCanvas()">🗑 Clear</button>
+
+  <button onclick="undo()">↩️ Undo</button>
+
+  <button onclick="toggleEraser()">🧽 Eraser</button>
+
+  <input id="color" type="color" value="#000000">
+
+  <input id="size" type="range" min="1" max="40" value="6">
+
+  <button onclick="playAnimation()">▶️ Play</button>
+
+  <button onclick="stopAnimation()">⏹ Stop</button>
+
+  <button onclick="downloadImage()">💾 Save</button>
+
+  <button onclick="shareLocation()">📍 Share My Location</button>
+
+</div>
+
+<canvas id="canvas" width="700" height="500"></canvas>
+
+<h3 style="text-align:center;">🎞 Animation Frames</h3>
+
+<div class="frames" id="frames"></div>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let drawing = false;
+let eraser = false;
+let history = [];
+let frames = [];
+let animationTimer = null;
+
+function getPosition(e) {
+
+  const rect = canvas.getBoundingClientRect();
+
+  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+
+  return {
+    x: x * canvas.width / rect.width,
+    y: y * canvas.height / rect.height
+  };
+}
+
+function saveState() {
+  history.push(canvas.toDataURL());
+}
+
+function startDrawing(e) {
+
+  e.preventDefault();
+
+  drawing = true;
+  saveState();
+
+  const pos = getPosition(e);
+
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+}
+
+function draw(e) {
+
+  if (!drawing) return;
+
+  e.preventDefault();
+
+  const pos = getPosition(e);
+
+  ctx.lineWidth = document.getElementById("size").value;
+  ctx.lineCap = "round";
+
+  if (eraser) {
+
+    ctx.globalCompositeOperation = "destination-out";
+
+  } else {
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = document.getElementById("color").value;
+
+  }
+
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+}
+
+function stopDrawing() {
+
+  drawing = false;
+
+  ctx.closePath();
+
+  ctx.globalCompositeOperation = "source-over";
+}
+
+canvas.addEventListener("mousedown", startDrawing);
+canvas.addEventListener("mousemove", draw);
+canvas.addEventListener("mouseup", stopDrawing);
+canvas.addEventListener("mouseleave", stopDrawing);
+
+canvas.addEventListener("touchstart", startDrawing);
+canvas.addEventListener("touchmove", draw);
+canvas.addEventListener("touchend", stopDrawing);
+
+function clearCanvas() {
+
+  saveState();
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function undo() {
+
+  if (!history.length) return;
+
+  const image = new Image();
+
+  image.onload = function() {
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.drawImage(image, 0, 0);
+
+  };
+
+  image.src = history.pop();
+}
+
+function toggleEraser() {
+
+  eraser = !eraser;
+
+  alert(eraser ? "Eraser ON 🧽" : "Brush ON ✏️");
+}
+
+function newFrame() {
+
+  frames.push(canvas.toDataURL());
+
+  updateFrames();
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function updateFrames() {
+
+  const container = document.getElementById("frames");
+
+  container.innerHTML = "";
+
+  frames.forEach(function(src, index) {
+
+    const img = document.createElement("img");
+
+    img.src = src;
+
+    img.className = "frame";
+
+    img.onclick = function() {
+      loadFrame(index);
+    };
+
+    container.appendChild(img);
+
+  });
+}
+
+function loadFrame(index) {
+
+  const image = new Image();
+
+  image.onload = function() {
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.drawImage(image, 0, 0);
+
+  };
+
+  image.src = frames[index];
+}
+
+function playAnimation() {
+
+  if (!frames.length) {
+
+    alert("Create some frames first!");
+
+    return;
+  }
+
+  stopAnimation();
+
+  let index = 0;
+
+  animationTimer = setInterval(function() {
+
+    loadFrame(index);
+
+    index++;
+
+    if (index >= frames.length) {
+      index = 0;
+    }
+
+  }, 300);
+}
+
+function stopAnimation() {
+
+  if (animationTimer) {
+
+    clearInterval(animationTimer);
+
+    animationTimer = null;
+  }
+}
+
+function downloadImage() {
+
+  const link = document.createElement("a");
+
+  link.download = "my-cartoon.png";
+
+  link.href = canvas.toDataURL("image/png");
+
+  link.click();
+}
+
+
+/* LOCATION — REQUIRES USER PERMISSION */
+
+function shareLocation() {
+
+  if (!navigator.geolocation) {
+
+    alert("Location is not supported on this device.");
+
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+
+    function(position) {
+
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+
+      const mapLink =
+        "https://www.google.com/maps?q="
+        + latitude + "," + longitude;
+
+      if (navigator.share) {
+
+        navigator.share({
+
+          title: "My Location",
+
+          text: "Here is my current location: " + mapLink
+
+        });
+
+      } else {
+
+        prompt(
+          "Copy your location link:",
+          mapLink
+        );
+
+      }
+
+    },
+
+    function() {
+
+      alert(
+        "Location permission was denied or unavailable."
+      );
+
+    }
+
+  );
+}
+
+</script>
+
+</body>
+</html>
